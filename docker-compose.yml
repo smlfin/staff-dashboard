@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: staff-dashboard-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: staff_dashboard
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - staff-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: staff-dashboard-backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/staff_dashboard
+      PORT: 5000
+      NODE_ENV: development
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-this}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-your-refresh-secret-change-this}
+      FRONTEND_URL: http://localhost:3000
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+      - /app/node_modules
+    networks:
+      - staff-network
+    command: npm run dev
+
+  # Frontend (optional, for production-like testing)
+  frontend:
+    image: node:18-alpine
+    container_name: staff-dashboard-frontend
+    working_dir: /app
+    environment:
+      VITE_API_URL: http://localhost:5000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - staff-network
+    command: npm run dev
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+
+networks:
+  staff-network:
+    driver: bridge

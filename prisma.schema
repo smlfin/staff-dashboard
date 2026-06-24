@@ -1,0 +1,116 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql" // or "sqlite" for development
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Staff Users Table
+model User {
+  id                 String    @id @default(cuid())
+  employeeCode       String    @unique
+  email              String    @unique
+  passwordHash       String
+  firstName          String
+  lastName           String
+  branch             String
+  designation        String
+  role               String    @default("staff") // staff, manager, admin
+  isActive           Boolean   @default(true)
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  staffRecords       StaffRecord[]
+  auditLogs          AuditLog[]
+  refreshTokens      RefreshToken[]
+
+  @@index([employeeCode])
+  @@index([branch])
+}
+
+// Staff Performance Records (from your Google Sheet data)
+model StaffRecord {
+  id                 String    @id @default(cuid())
+  timestamp          DateTime
+  date               DateTime
+  branchName         String
+  employeeCode       String
+  employeeName       String
+  designation        String
+  
+  // Activity Details
+  activityType       String    // "Visit", "Calls", "New Lead", "Reference"
+  typeOfCustomer     String    // "New", "Existing"
+  leadSource         String    // "Relatives", "Friends", "Customers", "Others"
+  howContacted       String?
+  
+  // Prospect Details
+  prospectName       String
+  phoneNumber        String
+  address            String?
+  profession         String?
+  dob                String?
+  
+  // Product & Status
+  productInterested  String
+  remarks            String?
+  nextFollowUpDate   DateTime?
+  relationWithStaff  String?
+  profileOfCustomer  String?   // "Warm", "Hot", "Cold"
+  averageMonthlyIncome String?
+  
+  // Family Details
+  familyDetailsWife  String?
+  familyDetailsJobWife String?
+  familyDetailsChildren String?
+  familyDetailsChildrenDetails String?
+  
+  // Metadata
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  user               User      @relation(fields: [employeeCode], references: [employeeCode])
+
+  @@index([employeeCode])
+  @@index([date])
+  @@index([branchName])
+  @@index([activityType])
+}
+
+// Refresh Tokens (for session management)
+model RefreshToken {
+  id                 String    @id @default(cuid())
+  employeeCode       String
+  token              String    @unique
+  expiresAt          DateTime
+  createdAt          DateTime  @default(now())
+
+  user               User      @relation(fields: [employeeCode], references: [employeeCode], onDelete: Cascade)
+
+  @@index([employeeCode])
+}
+
+// Audit Log (for compliance & security)
+model AuditLog {
+  id                 String    @id @default(cuid())
+  employeeCode       String
+  action             String    // "LOGIN", "LOGOUT", "EXPORT_CSV", "EXPORT_EXCEL", "VIEW_DASHBOARD"
+  resourceType       String?   // "StaffRecord", "Dashboard"
+  resourceId         String?
+  details            String?   // JSON stringified details
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime  @default(now())
+
+  user               User      @relation(fields: [employeeCode], references: [employeeCode], onDelete: Cascade)
+
+  @@index([employeeCode])
+  @@index([createdAt])
+  @@index([action])
+}

@@ -1,0 +1,1 @@
+study all md files and excute. One major deviation needed in Registration. It has to be simple. Collect Employee code from user, check with back end, if found ftech the name allow password ctration as simple as that
