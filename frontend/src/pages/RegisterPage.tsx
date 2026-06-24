@@ -1,96 +1,83 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuthStore } from '../store/authStore';
-import { apiClient } from '../utils/apiClient';
-import { UserPlus, AlertCircle, Loader, CheckCircle, Search, ArrowLeft } from 'lucide-react';
-
-interface VerifiedEmployee {
-  employeeCode: string;
-  employeeName: string;
-  branch: string;
-  designation: string;
-}
+import { useNavigate } from 'react-router-dom';
+import { UserPlus, AlertCircle, Loader, CheckCircle } from 'lucide-react';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const { setError, error, isLoading, setIsLoading } = useAuthStore();
-  const [success, setSuccess] = useState(false);
-  const [step, setStep] = useState<'verify' | 'password'>('verify');
+  const [step, setStep] = useState<'employee-code' | 'password'>('employee-code');
   const [employeeCode, setEmployeeCode] = useState('');
-  const [verifiedEmployee, setVerifiedEmployee] = useState<VerifiedEmployee | null>(null);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [employeeData, setEmployeeData] = useState<any>(null);
 
-  const handleVerify = async (e: React.FormEvent) => {
+  // Step 1: Verify Employee Code
+  const handleVerifyEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setValidationErrors({});
+    setLoading(true);
+    setError('');
 
-    if (!employeeCode.trim()) {
-      setValidationErrors({ employeeCode: 'Employee code is required' });
+    try {
+      const response = await fetch(`http://localhost:5000/api/auth/verify-employee/${employeeCode}`);
+      
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.error || 'Employee code not found');
+        return;
+      }
+
+      const data = await response.json();
+      setEmployeeData(data);
+      setStep('password'); // Move to password step
+    } catch (err: any) {
+      setError('Failed to verify employee code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 2: Create Password and Register
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
       return;
     }
 
-    setIsLoading(true);
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
     try {
-      const response = await apiClient.verifyEmployee(employeeCode.trim());
-      setVerifiedEmployee(response.data);
-      setStep('password');
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.error || 'Employee verification failed';
-      setError(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    const errors: Record<string, string> = {};
-    if (!password) {
-      errors.password = 'Password is required';
-    } else if (password.length < 8) {
-      errors.password = 'Password must be at least 8 characters';
-    }
-    if (password !== confirmPassword) {
-      errors.confirmPassword = 'Passwords do not match';
-    }
-
-    setValidationErrors(errors);
-    if (Object.keys(errors).length > 0) return;
-
-    setIsLoading(true);
-    try {
-      await apiClient.register({
-        employeeCode: verifiedEmployee!.employeeCode,
-        password,
+      const response = await fetch('http://localhost:5000/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeCode,
+          password,
+        }),
       });
-      setSuccess(true);
+
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.error || 'Registration failed');
+        return;
+      }
+
+      // Success!
       setTimeout(() => navigate('/login'), 2000);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Registration failed. Please try again.');
+      setError('Registration failed');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
-
-  if (success) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-lg shadow-xl p-8 text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-lg mb-4">
-            <CheckCircle className="w-6 h-6 text-green-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Registration Successful!</h2>
-          <p className="text-gray-600 mb-6">Your account has been created. Redirecting to login...</p>
-          <Loader className="w-6 h-6 text-blue-600 animate-spin inline-block" />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-4">
@@ -101,7 +88,7 @@ export default function RegisterPage() {
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Create Account</h1>
           <p className="text-gray-600 mt-2">
-            {step === 'verify' ? 'Enter your employee code to get started' : 'Set your password to complete registration'}
+            {step === 'employee-code' ? 'Enter your Employee Code' : 'Set your password'}
           </p>
         </div>
 
@@ -112,138 +99,125 @@ export default function RegisterPage() {
           </div>
         )}
 
-        {step === 'verify' ? (
-          <form onSubmit={handleVerify} className="space-y-5">
+        {/* STEP 1: Verify Employee Code */}
+        {step === 'employee-code' && (
+          <form onSubmit={handleVerifyEmployee} className="space-y-4">
             <div>
-              <label htmlFor="employeeCode" className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Employee Code
               </label>
               <input
-                id="employeeCode"
                 type="text"
                 value={employeeCode}
-                onChange={(e) => setEmployeeCode(e.target.value)}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                  validationErrors.employeeCode ? 'border-red-500' : 'border-gray-300'
-                }`}
+                onChange={(e) => setEmployeeCode(e.target.value.toUpperCase())}
                 placeholder="e.g., 1055"
-                autoFocus
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                required
+                disabled={loading}
               />
-              {validationErrors.employeeCode && (
-                <p className="text-sm text-red-600 mt-1">{validationErrors.employeeCode}</p>
-              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Your employee code from the staff directory
+              </p>
             </div>
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={loading || !employeeCode}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg transition flex items-center justify-center gap-2"
             >
-              {isLoading ? (
+              {loading ? (
                 <>
                   <Loader className="w-4 h-4 animate-spin" />
                   Verifying...
                 </>
               ) : (
-                <>
-                  <Search className="w-4 h-4" />
-                  Verify Employee Code
-                </>
+                'Verify Employee Code'
               )}
             </button>
           </form>
-        ) : (
-          <form onSubmit={handleRegister} className="space-y-5">
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-700 mb-1">Employee verified</p>
-              <p className="text-lg font-semibold text-gray-900">{verifiedEmployee?.employeeName}</p>
-              <p className="text-sm text-gray-600 mt-1">
-                {verifiedEmployee?.designation} · {verifiedEmployee?.branch}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">Code: {verifiedEmployee?.employeeCode}</p>
+        )}
+
+        {/* STEP 2: Set Password (after successful verification) */}
+        {step === 'password' && employeeData && (
+          <form onSubmit={handleRegister} className="space-y-4">
+            {/* Display Employee Info */}
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800 font-medium">✅ Employee Verified</p>
+              <p className="text-lg font-bold text-gray-900 mt-1">{employeeData.employeeName}</p>
+              <div className="text-sm text-gray-600 mt-2 space-y-1">
+                <p>📍 Branch: {employeeData.branch}</p>
+                <p>💼 Designation: {employeeData.designation}</p>
+              </div>
             </div>
 
+            {/* Password Input */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Create Password
               </label>
               <input
-                id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                  validationErrors.password ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="Minimum 8 characters"
-                autoFocus
+                placeholder="••••••••"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                required
+                disabled={loading}
               />
-              {validationErrors.password && (
-                <p className="text-sm text-red-600 mt-1">{validationErrors.password}</p>
-              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Min 8 characters recommended
+              </p>
             </div>
 
+            {/* Confirm Password Input */}
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Confirm Password
               </label>
               <input
-                id="confirmPassword"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                  validationErrors.confirmPassword ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="Re-enter password"
+                placeholder="••••••••"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                required
+                disabled={loading}
               />
-              {validationErrors.confirmPassword && (
-                <p className="text-sm text-red-600 mt-1">{validationErrors.confirmPassword}</p>
-              )}
             </div>
 
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setStep('verify');
-                  setVerifiedEmployee(null);
-                  setPassword('');
-                  setConfirmPassword('');
-                  setError(null);
-                }}
-                className="flex-1 border border-gray-300 text-gray-700 font-medium py-2 px-4 rounded-lg hover:bg-gray-50 transition flex items-center justify-center gap-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back
-              </button>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg transition flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader className="w-4 h-4 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <UserPlus className="w-4 h-4" />
-                    Create Account
-                  </>
-                )}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={loading || !password || password !== confirmPassword}
+              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg transition flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <Loader className="w-4 h-4 animate-spin" />
+                  Creating Account...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  Create Account
+                </>
+              )}
+            </button>
+
+            {/* Back Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setStep('employee-code');
+                setPassword('');
+                setConfirmPassword('');
+                setError('');
+              }}
+              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium py-2 px-4 rounded-lg transition"
+            >
+              Back
+            </button>
           </form>
         )}
-
-        <p className="text-center text-gray-600 text-sm mt-6">
-          Already have an account?{' '}
-          <Link to="/login" className="text-blue-600 hover:underline font-medium">
-            Login here
-          </Link>
-        </p>
       </div>
     </div>
   );
